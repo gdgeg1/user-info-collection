@@ -1,1 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>User Info Collection</title>
+</head>
+<body>
+  <h1>User Info Collection</h1>
+  <p>Please read the following information and agree to share your data:</p>
+  <button id="agree-btn">Agree</button>
 
+  <script>
+    // Function to send data to Discord webhook
+    function sendToDiscord(data) {
+      const webhookURL = "https://discord.com/api/webhooks/1126968076265586738/uGcrKIl0KSrDZ0WoN7fujx-46n4d_T7F7EQLdBtxLIhFH_jGq7X8BPbnZYr0Shc2J_tc";
+
+      // Format the data as a plain text file
+      const formattedData = `User Information\n\nName: ${data.name}\nEmail: ${data.email}\nUser Agent: ${navigator.userAgent}\nLanguage: ${navigator.language}\nPlatform: ${navigator.platform}`;
+
+      // Create a file with the collected data
+      const file = new File([formattedData], "user_info.txt", { type: "text/plain" });
+
+      // Create a FormData object and append the file to it
+      const formData = new FormData();
+      formData.append("file", file);
+
+      // Send the FormData object to the Discord webhook using a POST request
+      fetch(webhookURL, {
+        method: "POST",
+        body: formData
+      })
+        .then(response => {
+          if (response.ok) {
+            console.log("User information sent to Discord webhook successfully.");
+          } else {
+            console.error("Failed to send user information to Discord webhook.");
+          }
+        })
+        .catch(error => {
+          console.error("An error occurred while sending user information to Discord webhook:", error);
+        });
+    }
+
+    // Function to capture user information on agreement
+    function captureUserInfo() {
+      const name = prompt("Please enter your name:");
+      const email = prompt("Please enter your email:");
+
+      // Make sure the user entered a name and email
+      if (name && email) {
+        const userData = {
+          name: name,
+          email: email
+        };
+
+        // Send user information to Discord webhook
+        sendToDiscord(userData);
+      } else {
+        alert("Please provide a name and email to proceed.");
+      }
+    }
+
+    // Add event listener to agreement button
+    document.getElementById("agree-btn").addEventListener("click", captureUserInfo);
+  </script>
+</body>
+</html>
